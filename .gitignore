@@ -1,0 +1,5 @@
+instance/
+venv/
+.env
+app/leavebot.db
+__pycache__/

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link
+      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.6/main.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar/index.global.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  </head>
+  <body>
+    <div id="calendar"></div>
+
+    <!-- Modal for approving or declining leave -->
+    <div
+      id="leaveModal"
+      style="
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 20px;
+        border: 1px solid #ccc;
+        z-index: 9999;
+      "
+    >
+      <h3 id="modalTitle"></h3>
+      <p id="modalText"></p>
+      <button id="approveLeave">Approve</button>
+      <button id="declineLeave">Decline</button>
+      <button onclick="$('#leaveModal').hide();">Cancel</button>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const currentUserId = `{{slack_id}}`; // Slack ID passed from backend
+        const calendarEl = document.getElementById("calendar");
+        const calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: "dayGridMonth",
+          events: function (fetchInfo, successCallback, failureCallback) {
+            // Use the currentUserId in the URL to fetch events
+            fetch(`/api/leave-events/${currentUserId}`)
+              .then((response) => response.json())
+              .then((data) => {
+                console.log("Fetched events:", data);
+                successCallback(data);
+              })
+              .catch((error) => {
+                console.error("Error fetching events:", error);
+                failureCallback(error);
+              });
+          },
+          eventClick: function (info) {
+            console.log("Event clicked:", info.event);
+
+            if (info.event.extendedProps.status === "Pending") {
+              console.log("Pending event clicked");
+
+              $("#modalTitle").text(info.event.title);
+              $("#modalText").text(
+                `Leave request from ${info.event.start
+                  .toISOString()
+                  .slice(0, 10)} to ${info.event.end
+                  .toISOString()
+                  .slice(0, 10)}.`
+              );
+              $("#leaveModal").show();
+
+              $("#approveLeave")
+                .off("click")
+                .on("click", function () {
+                  console.log("Approve button clicked");
+                  updateLeaveStatus(info.event.id, "approve", info.event);
+                });
+
+              $("#declineLeave")
+                .off("click")
+                .on("click", function () {
+                  console.log("Decline button clicked");
+                  updateLeaveStatus(info.event.id, "decline", info.event);
+                });
+            }
+          },
+        });
+        calendar.render();
+      });
+
+      function updateLeaveStatus(leaveId, status, event) {
+        console.log("Updating leave status:", leaveId, status);
+
+        fetch(`/api/update-leave-status/${leaveId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status: status }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            console.log("Server response:", data);
+
+            if (data.success) {
+              if (status === "approve") {
+                event.setProp(
+                  "backgroundColor",
+                  event.extendedProps.backgroundColor
+                );
+                event.setProp(
+                  "borderColor",
+                  event.extendedProps.backgroundColor
+                );
+              } else if (status === "decline") {
+                event.remove();
+              }
+              event.setExtendedProp("status", status);
+              $("#leaveModal").hide();
+            } else {
+              alert("Failed to update leave status");
+            }
+          })
+          .catch((error) => {
+            console.error("Error updating leave status:", error);
+          });
+      }
+    </script>
+  </body>
+</html>
